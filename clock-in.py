@@ -8,7 +8,7 @@ import re
 import datetime
 import time
 import sys
-import ddddocr
+# import ddddocr
 
 
 class ClockIn(object):
@@ -16,7 +16,6 @@ class ClockIn(object):
     Attributes:
         username: (str) 浙大统一认证平台用户名（一般为学号）
         password: (str) 浙大统一认证平台密码
-        eai_sess: (str) cookie of healthreport.zju.edu.cn/ncov/wap/default/index
         LOGIN_URL: (str) 登录url
         BASE_URL: (str) 打卡首页url
         SAVE_URL: (str) 提交打卡url
@@ -28,15 +27,14 @@ class ClockIn(object):
     SAVE_URL = "https://healthreport.zju.edu.cn/ncov/wap/default/save"
     CAPTCHA_URL = 'https://healthreport.zju.edu.cn/ncov/wap/default/code'
     HEADERS = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.100 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.100 Safari/537.36"
     }
-
-    def __init__(self, username, password, eai_sess):
+    
+    def __init__(self, username, password):
         self.username = username
         self.password = password
-        self.eai_sess = eai_sess
         self.sess = requests.Session()
-        self.ocr = ddddocr.DdddOcr()
+#         self.ocr = ddddocr.DdddOcr()
 
     def login(self):
         """Login to ZJU platform"""
@@ -54,8 +52,7 @@ class ClockIn(object):
             'execution': execution,
             '_eventId': 'submit'
         }
-        res = self.sess.post(url=self.LOGIN_URL,
-                             data=data, headers=self.HEADERS)
+        res = self.sess.post(url=self.LOGIN_URL, data=data, headers=self.HEADERS)
 
         # check if login successfully
         if '统一身份认证' in res.content.decode():
@@ -64,8 +61,7 @@ class ClockIn(object):
 
     def post(self):
         """Post the hitcard info"""
-        res = self.sess.post(self.SAVE_URL, data=self.info,
-                             headers=self.HEADERS)
+        res = self.sess.post(self.SAVE_URL, data=self.info, headers=self.HEADERS)
         return json.loads(res.text)
 
     def get_date(self):
@@ -73,14 +69,12 @@ class ClockIn(object):
         today = datetime.date.today()
         return "%4d%02d%02d" % (today.year, today.month, today.day)
 
-    def get_captcha(self):
-        """Get CAPTCHA code"""
-        cookie_dict = {'eai-sess': self.eai_sess}
-        self.sess.cookies = requests.cookies.cookiejar_from_dict(cookie_dict)
-        resp = self.sess.get(self.CAPTCHA_URL)
-        captcha = self.ocr.classification(resp.content)
-        print("验证码：", captcha)
-        return captcha
+#     def get_captcha(self):
+#         """Get CAPTCHA code"""
+#         resp = self.sess.get(self.CAPTCHA_URL)
+#         captcha = self.ocr.classification(resp.content)
+#         print("验证码：", captcha)
+#         return captcha
 
     def get_info(self, html=None):
         """Get hitcard info, which is the old info with updated new time."""
@@ -110,8 +104,8 @@ class ClockIn(object):
         new_info['number'] = number
         new_info["date"] = self.get_date()
         new_info["created"] = round(time.time())
-        new_info["address"] = "浙江省杭州市余杭区"
-        new_info["area"] = "浙江省 杭州市 余杭区"
+        new_info["address"] = "浙江省杭州市西湖区"
+        new_info["area"] = "浙江省 杭州市 西湖区"
         new_info["province"] = new_info["area"].split(' ')[0]
         new_info["city"] = new_info["area"].split(' ')[1]
         # form change
@@ -123,7 +117,12 @@ class ClockIn(object):
         new_info['jcqzrq'] = ""
         new_info['gwszdd'] = ""
         new_info['szgjcs'] = ""
-        new_info['verifyCode'] = self.get_captcha()
+        
+        # 2022.05.07
+        # new_info['verifyCode'] = self.get_captcha() # 验证码识别（已取消）
+        
+        # 2022.07.05
+        new_info['internship'] = 3  # 今日是否进行实习或实践
 
         # 2021.08.05 Fix 2
         magics = re.findall(r'"([0-9a-f]{32})":\s*"([^\"]+)"', html)
@@ -158,18 +157,17 @@ class DecodeError(Exception):
     pass
 
 
-def main(username, password, eai_sess):
+def main(username, password):
     """Hit card process
     Arguments:
         username: (str) 浙大统一认证平台用户名（一般为学号）
         password: (str) 浙大统一认证平台密码
-        eai-sess: (str) cookie of healthreport.zju.edu.cn/ncov/wap/default/index
     """
     print("\n[Time] %s" %
           datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
     print("🚌 打卡任务启动")
 
-    dk = ClockIn(username, password, eai_sess)
+    dk = ClockIn(username, password)
 
     print("登录到浙大统一身份认证平台...")
     try:
@@ -194,12 +192,12 @@ def main(username, password, eai_sess):
             print('已为您打卡成功！')
         else:
             print(res['m'])
-            if res['m'].find("已经") != -1:  # 已经填报过了 不报错
+            if res['m'].find("已经") != -1: # 已经填报过了 不报错
                 pass
-            elif res['m'].find("验证码错误") != -1:  # 验证码错误
+            elif res['m'].find("验证码错误") != -1: # 验证码错误
                 print('再次尝试')
                 time.sleep(5)
-                main(username, password, eai_sess)
+                main(username, password)
                 pass
             else:
                 raise Exception
@@ -211,8 +209,7 @@ def main(username, password, eai_sess):
 if __name__ == "__main__":
     username = sys.argv[1]
     password = sys.argv[2]
-    eai_sess = sys.argv[3]
     try:
-        main(username, password, eai_sess)
+        main(username, password)
     except Exception:
         exit(1)
